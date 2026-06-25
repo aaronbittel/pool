@@ -18,7 +18,9 @@ type EchoOKBody struct {
 }
 
 type EchoNode struct {
-	ID int
+	nextMsgID int
+}
+
 }
 
 func (e *EchoNode) echoOKBody(echo EchoBody) EchoOKBody {
@@ -33,8 +35,8 @@ func (e *EchoNode) echoOKBody(echo EchoBody) EchoOKBody {
 }
 
 func (e *EchoNode) newID() int {
-	id := e.ID
-	e.ID += 1
+	id := e.nextMsgID
+	e.nextMsgID += 1
 	return id
 }
 
@@ -47,7 +49,7 @@ func (e *EchoNode) Step(msg node.Msg, encoder *json.Encoder) error {
 
 	switch body.Type {
 	case "init":
-		if err := node.ReplayToInit(msg, body.ID, encoder); err != nil {
+		if err := node.ReplayToInit(msg, e.newID(), body.ID, encoder); err != nil {
 			fmt.Errorf("could not reply to init: %v", err)
 		}
 	case "echo":

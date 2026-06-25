@@ -13,10 +13,18 @@ type GenerateOkBody struct {
 	GeneratedID string `json:"id"`
 }
 
-type UniqueIdNode struct{}
+type UniqueIdNode struct {
+	nextMsgID int
+}
 
 func (u UniqueIdNode) generateNewID() string {
 	return rand.Text()
+}
+
+func (u *UniqueIdNode) newID() int {
+	id := u.nextMsgID
+	u.nextMsgID += 1
+	return id
 }
 
 func (u UniqueIdNode) Step(msg node.Msg, encoder *json.Encoder) error {
@@ -28,7 +36,7 @@ func (u UniqueIdNode) Step(msg node.Msg, encoder *json.Encoder) error {
 
 	switch body.Type {
 	case "init":
-		if err := node.ReplayToInit(msg, body.ID, encoder); err != nil {
+		if err := node.ReplayToInit(msg, u.newID(), body.ID, encoder); err != nil {
 			fmt.Errorf("could not reply to init: %v", err)
 		}
 	case "init_ok":

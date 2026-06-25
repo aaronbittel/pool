@@ -23,7 +23,7 @@ func NewReply(msg Msg, rawBody json.RawMessage) Msg {
 type MsgBody struct {
 	Type      string `json:"type"`
 	ID        int    `json:"msg_id"`
-	InReplyTo int    `json:"in_reply_to"`
+	InReplyTo int    `json:"in_reply_to",omitzero`
 }
 
 type InitBody struct {
@@ -58,8 +58,8 @@ func MainLoop(node Node) {
 	}
 }
 
-func ReplayToInit(msg Msg, msgID int, encoder *json.Encoder) error {
-	rawInitOK, err := json.Marshal(NewInitOKBody(msgID))
+func ReplayToInit(msg Msg, msgID, replyMsgID int, encoder *json.Encoder) error {
+	rawInitOK, err := json.Marshal(NewInitOKBody(msgID, replyMsgID))
 	if err != nil {
 		return fmt.Errorf("could not marshal initOkBody: %v", err)
 	}
@@ -69,19 +69,21 @@ func ReplayToInit(msg Msg, msgID int, encoder *json.Encoder) error {
 	return nil
 }
 
-func NewInitOKBody(msgID int) InitOKBody {
+func NewInitOKBody(msgID, replyMsgID int) InitOKBody {
 	return InitOKBody{
 		MsgBody: MsgBody{
 			Type:      "init_ok",
-			InReplyTo: msgID,
+			InReplyTo: replyMsgID,
+			ID:        msgID,
 		},
 	}
 }
 
-func NewOkReply(msg Msg, msgID int, typ string) (Msg, error) {
+func NewOkReply(msg Msg, msgID, replyMsgID int, typ string) (Msg, error) {
 	body := MsgBody{
 		Type:      typ,
-		InReplyTo: msgID,
+		InReplyTo: replyMsgID,
+		ID:        msgID,
 	}
 
 	rawResp, err := json.Marshal(body)
