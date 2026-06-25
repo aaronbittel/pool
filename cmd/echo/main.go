@@ -8,6 +8,7 @@ import (
 )
 
 type EchoBody struct {
+	node.MsgBody
 	Echo string `json:"echo"`
 }
 
@@ -20,12 +21,12 @@ type EchoNode struct {
 	ID int
 }
 
-func (e *EchoNode) echoOKBody(msgID int, echo EchoBody) EchoOKBody {
+func (e *EchoNode) echoOKBody(echo EchoBody) EchoOKBody {
 	return EchoOKBody{
 		MsgBody: node.MsgBody{
 			Type:      "echo_ok",
 			ID:        e.newID(),
-			InReplyTo: msgID,
+			InReplyTo: echo.ID,
 		},
 		Echo: echo.Echo,
 	}
@@ -54,7 +55,7 @@ func (e *EchoNode) Step(msg node.Msg, encoder *json.Encoder) error {
 		if err := json.Unmarshal(msg.RawBody, &echo); err != nil {
 			fmt.Errorf("could not unmarshal raw msg body into EchoBody: %v", err)
 		}
-		rawEchoOK, err := json.Marshal(e.echoOKBody(body.ID, echo))
+		rawEchoOK, err := json.Marshal(e.echoOKBody(echo))
 		if err != nil {
 			fmt.Errorf("could not marshal echoOkBody: %v", err)
 		}
