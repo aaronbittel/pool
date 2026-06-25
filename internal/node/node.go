@@ -77,3 +77,21 @@ func NewInitOKBody(msgID int) InitOKBody {
 		},
 	}
 }
+
+func NewOkReply(msg Msg, msgID int, typ string) (Msg, error) {
+	body := MsgBody{
+		Type:      typ,
+		InReplyTo: msgID,
+	}
+
+	rawResp, err := json.Marshal(body)
+	if err != nil {
+		return Msg{}, err
+	}
+
+	return Msg{
+		Src:     msg.Dst,
+		Dst:     msg.Src,
+		RawBody: rawResp,
+	}, nil
+}
