@@ -2,6 +2,7 @@ package node
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 )
 
@@ -48,10 +49,31 @@ func MainLoop(node Node) {
 
 	for {
 		if err := stdinDecoder.Decode(&msg); err != nil {
+			panic(err)
 		}
 
 		if err := node.Step(msg, stdoutEncoder); err != nil {
 			panic(err)
 		}
+	}
+}
+
+func ReplayToInit(msg Msg, msgID int, encoder *json.Encoder) error {
+	rawInitOK, err := json.Marshal(NewInitOKBody(msgID))
+	if err != nil {
+		return fmt.Errorf("could not marshal initOkBody: %v", err)
+	}
+	if err := encoder.Encode(NewReply(msg, rawInitOK)); err != nil {
+		return fmt.Errorf("could not encode init replay: %v", err)
+	}
+	return nil
+}
+
+func NewInitOKBody(msgID int) InitOKBody {
+	return InitOKBody{
+		MsgBody: MsgBody{
+			Type:      "init_ok",
+			InReplyTo: msgID,
+		},
 	}
 }

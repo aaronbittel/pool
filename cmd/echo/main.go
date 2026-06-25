@@ -20,16 +20,6 @@ type EchoNode struct {
 	ID int
 }
 
-func (e *EchoNode) initOKBody(msgID int) node.InitOKBody {
-	return node.InitOKBody{
-		MsgBody: node.MsgBody{
-			Type:      "init_ok",
-			ID:        e.newID(),
-			InReplyTo: msgID,
-		},
-	}
-}
-
 func (e *EchoNode) echoOKBody(msgID int, echo EchoBody) EchoOKBody {
 	return EchoOKBody{
 		MsgBody: node.MsgBody{
@@ -56,12 +46,8 @@ func (e *EchoNode) Step(msg node.Msg, encoder *json.Encoder) error {
 
 	switch body.Type {
 	case "init":
-		rawInitOK, err := json.Marshal(e.initOKBody(body.ID))
-		if err != nil {
-			return fmt.Errorf("could not marshal initOkBody: %v", err)
-		}
-		if err := encoder.Encode(node.NewReply(msg, rawInitOK)); err != nil {
-			return fmt.Errorf("could not encode init replay: %v", err)
+		if err := node.ReplayToInit(msg, body.ID, encoder); err != nil {
+			fmt.Errorf("could not reply to init: %v", err)
 		}
 	case "echo":
 		var echo EchoBody
