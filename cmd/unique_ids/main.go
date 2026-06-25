@@ -17,6 +17,9 @@ type UniqueIdNode struct {
 	nextMsgID int
 }
 
+func (u UniqueIdNode) SetEncoder(encoder *json.Encoder) {
+}
+
 func (u UniqueIdNode) generateNewID() string {
 	return rand.Text()
 }

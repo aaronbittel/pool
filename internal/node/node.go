@@ -38,6 +38,7 @@ type InitOKBody struct {
 
 type Node interface {
 	Step(msg Msg, encoder *json.Encoder) error
+	SetEncoder(encoder *json.Encoder)
 }
 
 func MainLoop(node Node) {
@@ -46,6 +47,8 @@ func MainLoop(node Node) {
 		stdoutEncoder = json.NewEncoder(os.Stdout)
 		msg           Msg
 	)
+
+	node.SetEncoder(stdoutEncoder)
 
 	for {
 		if err := stdinDecoder.Decode(&msg); err != nil {
