@@ -32,13 +32,8 @@ func (u *UniqueIdNode) newID() int {
 }
 
 func (u UniqueIdNode) Step(event node.Event, encoder *json.Encoder) error {
-	switch event.Kind {
-	case node.Injected:
+	if event.Kind != node.Message {
 		panic("got injected event when there's no event injection")
-	case node.Message:
-	// expected do nothing
-	default:
-		panic(fmt.Sprintf("got unexpected event kind %d", event.Kind))
 	}
 
 	msg := event.Msg

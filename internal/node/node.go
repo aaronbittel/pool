@@ -14,9 +14,14 @@ const (
 	Injected
 )
 
+type InjectedMessage interface {
+	IsInjected()
+}
+
 type Event struct {
-	Kind MessageKind
-	Msg  Msg
+	Kind     MessageKind
+	Msg      *Msg
+	Injected InjectedMessage
 }
 
 type Msg struct {
@@ -25,7 +30,7 @@ type Msg struct {
 	RawBody json.RawMessage `json:"body"`
 }
 
-func NewReply(msg Msg, rawBody json.RawMessage) Msg {
+func NewReply(msg *Msg, rawBody json.RawMessage) Msg {
 	return Msg{
 		Src:     msg.Dst,
 		Dst:     msg.Src,
@@ -81,11 +86,11 @@ func readMessagesFromStdin(events chan Event) {
 			fmt.Fprintf(os.Stderr, "could not unmarshal stdin into msg: %v", err)
 			os.Exit(1)
 		}
-		events <- Event{Kind: Message, Msg: msg}
+		events <- Event{Kind: Message, Msg: &msg}
 	}
 }
 
-func ReplayToInit(msg Msg, msgID, replyMsgID int, encoder *json.Encoder) error {
+func ReplayToInit(msg *Msg, msgID, replyMsgID int, encoder *json.Encoder) error {
 	rawInitOK, err := json.Marshal(NewInitOKBody(msgID, replyMsgID))
 	if err != nil {
 		return fmt.Errorf("could not marshal initOkBody: %v", err)
@@ -106,7 +111,7 @@ func NewInitOKBody(msgID, replyMsgID int) InitOKBody {
 	}
 }
 
-func NewOkReply(msg Msg, msgID, replyMsgID int, typ string) (Msg, error) {
+func NewOkReply(msg *Msg, msgID, replyMsgID int, typ string) (Msg, error) {
 	body := MsgBody{
 		Type:      typ,
 		InReplyTo: replyMsgID,

@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/aaronbittel/pool/internal/node"
@@ -72,16 +71,18 @@ type BroadcastNode struct {
 	name      string
 	nextMsgID int
 
-	messageMutex sync.Mutex // protects messages
-	messages     set[int]
+	messages set[int]
 
 	topology map[string][]string
 
-	knownMutex sync.Mutex // protects known
 	// all messages of a node that was sent to this node via a gossip message
 	// these messages dont not need to be sent to them in a gossip message
 	known map[string]set[int]
 }
+
+type GossipEvent struct{}
+
+func (GossipEvent) IsInjected() {}
 
 func (b *BroadcastNode) InitNode(events chan node.Event) {
 	b.nextMsgID = 0
@@ -93,7 +94,10 @@ func (b *BroadcastNode) InitNode(events chan node.Event) {
 		for {
 			select {
 			case <-ticker.C:
-				events <- node.Event{Kind: node.Injected}
+				events <- node.Event{
+					Kind:     node.Injected,
+					Injected: GossipEvent{},
+				}
 			}
 		}
 	}()
@@ -106,8 +110,6 @@ func (b *BroadcastNode) newID() int {
 }
 
 func (b *BroadcastNode) messageSlice() []int {
-	b.messageMutex.Lock()
-	defer b.messageMutex.Unlock()
 	messages := make([]int, 0, len(b.messages))
 	for m := range b.messages {
 		messages = append(messages, m)
@@ -121,16 +123,14 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 		// received an event to do gossip
 		for _, neighbor := range b.topology[b.name] {
 			sendMessages := []int{}
-			b.knownMutex.Lock()
 			for _, message := range b.messageSlice() {
 				if _, ok := b.known[neighbor][message]; !ok {
 					sendMessages = append(sendMessages, message)
 				}
 			}
-			b.knownMutex.Unlock()
 
 			body := GossipBody{
-				MsgBody:  node.MsgBody{Type: "gossip"},
+				MsgBody:  node.MsgBody{Type: "gossip", ID: b.newID()},
 				Messages: sendMessages,
 			}
 			raw, err := json.Marshal(body)
@@ -171,9 +171,7 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 				return fmt.Errorf("could not unmarshal %v: %v", msg.RawBody, err)
 			}
 
-			b.messageMutex.Lock()
 			b.messages[broadcastBody.Message] = struct{}{}
-			b.messageMutex.Unlock()
 
 			broadcastOkMsg, err := node.NewOkReply(msg, b.newID(), body.ID, "broadcast_ok")
 			if err != nil {
@@ -200,11 +198,9 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 				return fmt.Errorf("could not unmarshal %v: %v", msg.RawBody, err)
 			}
 			b.topology = topologyBody.Topology
-			b.knownMutex.Lock()
 			for _, neigbour := range b.topology[b.name] {
 				b.known[neigbour] = make(set[int])
 			}
-			b.knownMutex.Unlock()
 			topologyOkMsg, err := node.NewOkReply(msg, b.newID(), body.ID, "topology_ok")
 			if err != nil {
 				return fmt.Errorf("could not create TopologyOk msg: %v", err)
@@ -217,14 +213,10 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 			if err := json.Unmarshal(msg.RawBody, &gossipBody); err != nil {
 				panic(err)
 			}
-			b.messageMutex.Lock()
-			b.knownMutex.Lock()
 			for _, m := range gossipBody.Messages {
 				b.known[msg.Src][m] = struct{}{}
 				b.messages[m] = struct{}{}
 			}
-			b.knownMutex.Unlock()
-			b.messageMutex.Unlock()
 		case "broadcast_ok", "read_ok", "topology_ok":
 		default:
 			panic(fmt.Sprintf("received unknown message type %q", body.Type))
