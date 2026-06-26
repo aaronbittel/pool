@@ -1,6 +1,7 @@
 package node
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -37,27 +38,38 @@ type InitOKBody struct {
 }
 
 type Node interface {
+	InitNode(encoder *json.Encoder, messages chan Msg)
 	Step(msg Msg, encoder *json.Encoder) error
-	SetEncoder(encoder *json.Encoder)
 }
 
 func MainLoop(node Node) {
 	var (
-		stdinDecoder  = json.NewDecoder(os.Stdin)
+		messages      = make(chan Msg)
 		stdoutEncoder = json.NewEncoder(os.Stdout)
-		msg           Msg
 	)
 
-	node.SetEncoder(stdoutEncoder)
+	go readMessagesFromStdin(messages)
 
-	for {
-		if err := stdinDecoder.Decode(&msg); err != nil {
-			panic(err)
-		}
+	node.InitNode(stdoutEncoder, messages)
 
+	for msg := range messages {
 		if err := node.Step(msg, stdoutEncoder); err != nil {
 			panic(err)
 		}
+	}
+}
+
+func readMessagesFromStdin(messages chan Msg) {
+	// each message will be on a seperate line
+	scanner := bufio.NewScanner(os.Stdin)
+
+	var msg Msg
+	for scanner.Scan() {
+		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
+			fmt.Fprintf(os.Stderr, "could not unmarshal stdin into msg: %v", err)
+			os.Exit(1)
+		}
+		messages <- msg
 	}
 }
 

@@ -9,6 +9,12 @@ import (
 	"github.com/aaronbittel/pool/internal/node"
 )
 
+// TODO: maybe create another event that emits every 10s where each nodes sents all
+// messages to each neighbor which itself knows and it does not know that the other
+// knows of it. This should reset the messages needed to be sent in gossips to zero till
+// new messages arrive.
+// Or if not send all, send a few extra that are not yet known.
+
 type GossipBody struct {
 	node.MsgBody
 	Messages []int `json:"messages"`
@@ -78,8 +84,11 @@ type BroadcastNode struct {
 	known map[string]set[int]
 }
 
-func (b *BroadcastNode) SetEncoder(encoder *json.Encoder) {
+func (b *BroadcastNode) InitNode(encoder *json.Encoder, messages chan node.Msg) {
 	b.encoder = encoder
+	b.nextMsgID = 0
+	b.messages = make(set[int])
+	b.known = make(map[string]set[int])
 }
 
 func (b *BroadcastNode) newID() int {
@@ -224,5 +233,5 @@ func (b *BroadcastNode) Step(msg node.Msg, encoder *json.Encoder) error {
 }
 
 func main() {
-	node.MainLoop(&BroadcastNode{messages: make(set[int]), known: make(map[string]set[int])})
+	node.MainLoop(&BroadcastNode{})
 }

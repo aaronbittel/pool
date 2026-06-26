@@ -21,7 +21,8 @@ type EchoNode struct {
 	nextMsgID int
 }
 
-func (e *EchoNode) SetEncoder(encoder *json.Encoder) {
+func (e *EchoNode) InitNode(encoder *json.Encoder, _messages chan node.Msg) {
+	e.nextMsgID = 0
 }
 
 func (e *EchoNode) echoOKBody(echo EchoBody) EchoOKBody {
