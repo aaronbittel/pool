@@ -84,11 +84,21 @@ type BroadcastNode struct {
 	known map[string]set[int]
 }
 
-func (b *BroadcastNode) InitNode(encoder *json.Encoder, messages chan node.Msg) {
+func (b *BroadcastNode) InitNode(encoder *json.Encoder, events chan node.Event) {
 	b.encoder = encoder
 	b.nextMsgID = 0
 	b.messages = make(set[int])
 	b.known = make(map[string]set[int])
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				events <- node.Event{Kind: node.Injected}
+			}
+		}
+	}()
 }
 
 func (b *BroadcastNode) newID() int {
@@ -107,126 +117,122 @@ func (b *BroadcastNode) messageSlice() []int {
 	return messages
 }
 
-// maybe inject this via the node mainloop?
-func (b *BroadcastNode) gossip() {
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			for _, neighbor := range b.topology[b.name] {
-				sendMessages := []int{}
-				b.knownMutex.Lock()
-				for _, message := range b.messageSlice() {
-					if _, ok := b.known[neighbor][message]; !ok {
-						sendMessages = append(sendMessages, message)
-					}
-				}
-				b.knownMutex.Unlock()
-
-				body := GossipBody{
-					MsgBody:  node.MsgBody{Type: "gossip"},
-					Messages: sendMessages,
-				}
-				raw, err := json.Marshal(body)
-				if err != nil {
-					panic(err)
-				}
-				msg := node.Msg{
-					Src:     b.name,
-					Dst:     neighbor,
-					RawBody: raw,
-				}
-				if err := b.encoder.Encode(msg); err != nil {
-					panic(err)
+func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
+	switch event.Kind {
+	case node.Injected:
+		// received an event to do gossip
+		for _, neighbor := range b.topology[b.name] {
+			sendMessages := []int{}
+			b.knownMutex.Lock()
+			for _, message := range b.messageSlice() {
+				if _, ok := b.known[neighbor][message]; !ok {
+					sendMessages = append(sendMessages, message)
 				}
 			}
-		}
-	}
-}
+			b.knownMutex.Unlock()
 
-func (b *BroadcastNode) Step(msg node.Msg, encoder *json.Encoder) error {
-	var body node.MsgBody
+			body := GossipBody{
+				MsgBody:  node.MsgBody{Type: "gossip"},
+				Messages: sendMessages,
+			}
+			raw, err := json.Marshal(body)
+			if err != nil {
+				panic(err)
+			}
+			msg := node.Msg{
+				Src:     b.name,
+				Dst:     neighbor,
+				RawBody: raw,
+			}
+			if err := b.encoder.Encode(msg); err != nil {
+				panic(err)
+			}
+		}
+	case node.Message:
+		msg := event.Msg
 
-	if err := json.Unmarshal(msg.RawBody, &body); err != nil {
-		return fmt.Errorf("could not unmarshal msg in body %v: %v", msg, err)
-	}
-
-	switch body.Type {
-	case "init":
-		var initBody node.InitBody
-		if err := json.Unmarshal(msg.RawBody, &initBody); err != nil {
-			return fmt.Errorf("could not unmarshal rawbody: %v", err)
-		}
-		b.name = initBody.NodeID
-
-		if err := node.ReplayToInit(msg, b.newID(), body.ID, encoder); err != nil {
-			return fmt.Errorf("could not reply to init: %v", err)
-		}
-	case "broadcast":
-		var broadcastBody BroadcastBody
-		if err := json.Unmarshal(msg.RawBody, &broadcastBody); err != nil {
-			return fmt.Errorf("could not unmarshal %v: %v", msg.RawBody, err)
+		var body node.MsgBody
+		if err := json.Unmarshal(msg.RawBody, &body); err != nil {
+			return fmt.Errorf("could not unmarshal msg in body %v: %v", msg, err)
 		}
 
-		b.messageMutex.Lock()
-		b.messages[broadcastBody.Message] = struct{}{}
-		b.messageMutex.Unlock()
+		switch body.Type {
+		case "init":
+			var initBody node.InitBody
+			if err := json.Unmarshal(msg.RawBody, &initBody); err != nil {
+				return fmt.Errorf("could not unmarshal rawbody: %v", err)
+			}
+			b.name = initBody.NodeID
 
-		broadcastOkMsg, err := node.NewOkReply(msg, b.newID(), body.ID, "broadcast_ok")
-		if err != nil {
-			return fmt.Errorf("could not create BroadcastOk msg: %v", err)
+			if err := node.ReplayToInit(msg, b.newID(), body.ID, encoder); err != nil {
+				return fmt.Errorf("could not reply to init: %v", err)
+			}
+		case "broadcast":
+			var broadcastBody BroadcastBody
+			if err := json.Unmarshal(msg.RawBody, &broadcastBody); err != nil {
+				return fmt.Errorf("could not unmarshal %v: %v", msg.RawBody, err)
+			}
+
+			b.messageMutex.Lock()
+			b.messages[broadcastBody.Message] = struct{}{}
+			b.messageMutex.Unlock()
+
+			broadcastOkMsg, err := node.NewOkReply(msg, b.newID(), body.ID, "broadcast_ok")
+			if err != nil {
+				return fmt.Errorf("could not create BroadcastOk msg: %v", err)
+			}
+			if err := encoder.Encode(broadcastOkMsg); err != nil {
+				return fmt.Errorf("could not encode BroadcastOk msg: %v", err)
+			}
+		case "read":
+			var readBody ReadBody
+			if err := json.Unmarshal(msg.RawBody, &readBody); err != nil {
+				return fmt.Errorf("could not unmarshal %v: %v", msg.RawBody, err)
+			}
+			rawReadOkBody, err := json.Marshal(NewReadOkBody(b.newID(), body.ID, b.messageSlice()))
+			if err != nil {
+				return fmt.Errorf("could not marshal readOkBody: %v", err)
+			}
+			if err := encoder.Encode(node.NewReply(msg, rawReadOkBody)); err != nil {
+				return fmt.Errorf("could not encode ReadOkBody msg: %v", err)
+			}
+		case "topology":
+			var topologyBody TopologyBody
+			if err := json.Unmarshal(msg.RawBody, &topologyBody); err != nil {
+				return fmt.Errorf("could not unmarshal %v: %v", msg.RawBody, err)
+			}
+			b.topology = topologyBody.Topology
+			b.knownMutex.Lock()
+			for _, neigbour := range b.topology[b.name] {
+				b.known[neigbour] = make(set[int])
+			}
+			b.knownMutex.Unlock()
+			topologyOkMsg, err := node.NewOkReply(msg, b.newID(), body.ID, "topology_ok")
+			if err != nil {
+				return fmt.Errorf("could not create TopologyOk msg: %v", err)
+			}
+			if err := encoder.Encode(topologyOkMsg); err != nil {
+				return fmt.Errorf("could not encode TopologyOk msg: %v", err)
+			}
+		case "gossip":
+			var gossipBody GossipBody
+			if err := json.Unmarshal(msg.RawBody, &gossipBody); err != nil {
+				panic(err)
+			}
+			b.messageMutex.Lock()
+			b.knownMutex.Lock()
+			for _, m := range gossipBody.Messages {
+				b.known[msg.Src][m] = struct{}{}
+				b.messages[m] = struct{}{}
+			}
+			b.knownMutex.Unlock()
+			b.messageMutex.Unlock()
+		case "broadcast_ok", "read_ok", "topology_ok":
+		default:
+			panic(fmt.Sprintf("received unknown message type %q", body.Type))
 		}
-		if err := encoder.Encode(broadcastOkMsg); err != nil {
-			return fmt.Errorf("could not encode BroadcastOk msg: %v", err)
-		}
-	case "read":
-		var readBody ReadBody
-		if err := json.Unmarshal(msg.RawBody, &readBody); err != nil {
-			return fmt.Errorf("could not unmarshal %v: %v", msg.RawBody, err)
-		}
-		rawReadOkBody, err := json.Marshal(NewReadOkBody(b.newID(), body.ID, b.messageSlice()))
-		if err != nil {
-			return fmt.Errorf("could not marshal readOkBody: %v", err)
-		}
-		if err := encoder.Encode(node.NewReply(msg, rawReadOkBody)); err != nil {
-			return fmt.Errorf("could not encode ReadOkBody msg: %v", err)
-		}
-	case "topology":
-		var topologyBody TopologyBody
-		if err := json.Unmarshal(msg.RawBody, &topologyBody); err != nil {
-			return fmt.Errorf("could not unmarshal %v: %v", msg.RawBody, err)
-		}
-		b.topology = topologyBody.Topology
-		b.knownMutex.Lock()
-		for _, neigbour := range b.topology[b.name] {
-			b.known[neigbour] = make(set[int])
-		}
-		b.knownMutex.Unlock()
-		topologyOkMsg, err := node.NewOkReply(msg, b.newID(), body.ID, "topology_ok")
-		if err != nil {
-			return fmt.Errorf("could not create TopologyOk msg: %v", err)
-		}
-		if err := encoder.Encode(topologyOkMsg); err != nil {
-			return fmt.Errorf("could not encode TopologyOk msg: %v", err)
-		}
-		go b.gossip()
-	case "gossip":
-		var gossipBody GossipBody
-		if err := json.Unmarshal(msg.RawBody, &gossipBody); err != nil {
-			panic(err)
-		}
-		b.messageMutex.Lock()
-		b.knownMutex.Lock()
-		for _, m := range gossipBody.Messages {
-			b.known[msg.Src][m] = struct{}{}
-			b.messages[m] = struct{}{}
-		}
-		b.knownMutex.Unlock()
-		b.messageMutex.Unlock()
-	case "broadcast_ok", "read_ok", "topology_ok":
 	default:
-		panic(fmt.Sprintf("received unknown message type %q", body.Type))
+		panic(fmt.Sprintf("got unexpected event kind %d", event.Kind))
 	}
 
 	return nil

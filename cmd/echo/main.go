@@ -21,7 +21,7 @@ type EchoNode struct {
 	nextMsgID int
 }
 
-func (e *EchoNode) InitNode(encoder *json.Encoder, _messages chan node.Msg) {
+func (e *EchoNode) InitNode(encoder *json.Encoder, _events chan node.Event) {
 	e.nextMsgID = 0
 }
 
@@ -42,7 +42,18 @@ func (e *EchoNode) newID() int {
 	return id
 }
 
-func (e *EchoNode) Step(msg node.Msg, encoder *json.Encoder) error {
+func (e *EchoNode) Step(event node.Event, encoder *json.Encoder) error {
+	switch event.Kind {
+	case node.Injected:
+		panic("got injected event when there's no event injection")
+	case node.Message:
+	// expected do nothing
+	default:
+		panic(fmt.Sprintf("got unexpected event kind %d", event.Kind))
+	}
+
+	msg := event.Msg
+
 	var body node.MsgBody
 
 	if err := json.Unmarshal(msg.RawBody, &body); err != nil {

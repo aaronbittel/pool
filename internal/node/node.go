@@ -7,6 +7,18 @@ import (
 	"os"
 )
 
+type MessageKind int
+
+const (
+	Message MessageKind = iota
+	Injected
+)
+
+type Event struct {
+	Kind MessageKind
+	Msg  Msg
+}
+
 type Msg struct {
 	Src     string          `json:"src"`
 	Dst     string          `json:"dest"`
@@ -38,28 +50,28 @@ type InitOKBody struct {
 }
 
 type Node interface {
-	InitNode(encoder *json.Encoder, messages chan Msg)
-	Step(msg Msg, encoder *json.Encoder) error
+	InitNode(encoder *json.Encoder, events chan Event)
+	Step(event Event, encoder *json.Encoder) error
 }
 
 func MainLoop(node Node) {
 	var (
-		messages      = make(chan Msg)
+		events        = make(chan Event)
 		stdoutEncoder = json.NewEncoder(os.Stdout)
 	)
 
-	go readMessagesFromStdin(messages)
+	go readMessagesFromStdin(events)
 
-	node.InitNode(stdoutEncoder, messages)
+	node.InitNode(stdoutEncoder, events)
 
-	for msg := range messages {
-		if err := node.Step(msg, stdoutEncoder); err != nil {
+	for event := range events {
+		if err := node.Step(event, stdoutEncoder); err != nil {
 			panic(err)
 		}
 	}
 }
 
-func readMessagesFromStdin(messages chan Msg) {
+func readMessagesFromStdin(events chan Event) {
 	// each message will be on a seperate line
 	scanner := bufio.NewScanner(os.Stdin)
 
@@ -69,7 +81,7 @@ func readMessagesFromStdin(messages chan Msg) {
 			fmt.Fprintf(os.Stderr, "could not unmarshal stdin into msg: %v", err)
 			os.Exit(1)
 		}
-		messages <- msg
+		events <- Event{Kind: Message, Msg: msg}
 	}
 }
 
