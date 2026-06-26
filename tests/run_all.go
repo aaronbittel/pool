@@ -50,7 +50,7 @@ func runTest(testPath string) bool {
 		case errors.As(err, &exitErr):
 			return false
 		default:
-			log.Fatal("could not run cmd for %s: %v", testPath, err)
+			log.Fatalf("could not run cmd for %s: %v", testPath, err)
 		}
 	}
 	return true

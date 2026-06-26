@@ -30,7 +30,7 @@ func TestEchoNode(t *testing.T) {
 			})
 
 			jsonRecorder := newTestJsonRecorder(&EchoNode{})
-			gotInitOkMsg := jsonRecorder.step(t, initMsg)
+			gotInitOkMsg := jsonRecorder.step(t, node.Event{Kind: node.Message, Msg: &initMsg})
 			assert.Equal(t, wantInitOkMsg, gotInitOkMsg)
 		})
 	}
@@ -48,8 +48,8 @@ func newTestJsonRecorder(node node.Node) *jsonRecorder {
 	}
 }
 
-func (jr *jsonRecorder) step(t *testing.T, msg node.Msg) node.Msg {
-	require.NoError(t, jr.node.Step(msg, json.NewEncoder(jr.buf)))
+func (jr *jsonRecorder) step(t *testing.T, event node.Event) node.Msg {
+	require.NoError(t, jr.node.Step(event, json.NewEncoder(jr.buf)))
 	var resp node.Msg
 	require.NoError(t, json.NewDecoder(jr.buf).Decode(&resp))
 	return resp

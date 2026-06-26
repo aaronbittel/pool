@@ -8,12 +8,6 @@ import (
 	"github.com/aaronbittel/pool/internal/node"
 )
 
-// TODO: maybe create another event that emits every 10s where each nodes sents all
-// messages to each neighbor which itself knows and it does not know that the other
-// knows of it. This should reset the messages needed to be sent in gossips to zero till
-// new messages arrive.
-// Or if not send all, send a few extra that are not yet known.
-
 type GossipBody struct {
 	node.MsgBody
 	Messages []int `json:"messages"`
@@ -78,6 +72,9 @@ type BroadcastNode struct {
 	// all messages of a node that was sent to this node via a gossip message
 	// these messages dont not need to be sent to them in a gossip message
 	known map[string]set[int]
+	// extra is the maximum of additional messages a node is sending to a neighbor in a
+	// gossip
+	extra int
 }
 
 type GossipEvent struct{}
@@ -88,6 +85,7 @@ func (b *BroadcastNode) InitNode(events chan node.Event) {
 	b.nextMsgID = 0
 	b.messages = make(set[int])
 	b.known = make(map[string]set[int])
+	b.extra = 25
 
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
@@ -122,16 +120,20 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 	case node.Injected:
 		// received an event to do gossip
 		for _, neighbor := range b.topology[b.name] {
-			sendMessages := []int{}
+			extra := b.extra
+			sendToNeighbor := []int{}
 			for _, message := range b.messageSlice() {
 				if _, ok := b.known[neighbor][message]; !ok {
-					sendMessages = append(sendMessages, message)
+					sendToNeighbor = append(sendToNeighbor, message)
+				} else if extra > 0 {
+					sendToNeighbor = append(sendToNeighbor, message)
+					extra -= 1
 				}
 			}
 
 			body := GossipBody{
 				MsgBody:  node.MsgBody{Type: "gossip", ID: b.newID()},
-				Messages: sendMessages,
+				Messages: sendToNeighbor,
 			}
 			raw, err := json.Marshal(body)
 			if err != nil {
