@@ -72,9 +72,11 @@ type BroadcastNode struct {
 	// all messages of a node that was sent to this node via a gossip message
 	// these messages dont not need to be sent to them in a gossip message
 	known map[string]set[int]
-	// extra is the maximum of additional messages a node is sending to a neighbor in a
-	// gossip
-	extra int
+	// extraPerc specifies the percentage (0–100) by which the number of messages sent
+	// to a neighbor in a gossip round may be increased above the baseline. For example,
+	// if the baseline is 10 messages and extraPerc is 10, then the node may send up to
+	// 1 additional message (i.e., 11 total).
+	extraPerc int
 }
 
 type GossipEvent struct{}
@@ -85,7 +87,7 @@ func (b *BroadcastNode) InitNode(events chan node.Event) {
 	b.nextMsgID = 0
 	b.messages = make(set[int])
 	b.known = make(map[string]set[int])
-	b.extra = 25
+	b.extraPerc = 10
 
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
@@ -120,14 +122,15 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 	case node.Injected:
 		// received an event to do gossip
 		for _, neighbor := range b.topology[b.name] {
-			extra := b.extra
+			allMessages := b.messageSlice()
+			additional := ((len(allMessages) - len(b.known[neighbor])) * b.extraPerc) / 100
 			sendToNeighbor := []int{}
-			for _, message := range b.messageSlice() {
+			for _, message := range allMessages {
 				if _, ok := b.known[neighbor][message]; !ok {
 					sendToNeighbor = append(sendToNeighbor, message)
-				} else if extra > 0 {
+				} else if additional > 0 {
 					sendToNeighbor = append(sendToNeighbor, message)
-					extra -= 1
+					additional -= 1
 				}
 			}
 
