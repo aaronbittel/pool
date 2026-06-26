@@ -12,6 +12,12 @@ import (
 
 const testDir = "./tests/"
 
+type result struct {
+	test   string
+	ok     bool
+	worker int
+}
+
 func main() {
 	fmt.Println("Build all executables ...")
 
@@ -27,31 +33,71 @@ func main() {
 		log.Fatalf("glob failed: %v", err)
 	}
 
+	jobs := make(chan string)
+	results := make(chan result)
+
 	var wg sync.WaitGroup
 
-	for _, testPath := range tests {
-		fmt.Printf("starting test %q...\n", testPath)
-		wg.Go(func() {
-			success := runTest(testPath)
-			r := "SUCCESS"
-			if !success {
-				r = "FAILED"
+	const workers = 3
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+
+			for testPath := range jobs {
+				fmt.Printf("[worker %d] running %q...\n", workerID, testPath)
+
+				ok := runTest(testPath)
+
+				results <- result{
+					test:   testPath,
+					ok:     ok,
+					worker: workerID,
+				}
 			}
-			fmt.Printf("%q done: %s\n", testPath, r)
-		})
+		}(i)
 	}
-	wg.Wait()
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	go func() {
+		for _, t := range tests {
+			jobs <- t
+		}
+		close(jobs)
+	}()
+
+	allOK := true
+
+	for r := range results {
+		status := "SUCCESS"
+		if !r.ok {
+			status = "FAILED"
+			allOK = false
+		}
+		fmt.Printf("[worker %d] %q: %s\n", r.worker, r.test, status)
+	}
+
+	fmt.Println()
+
+	if allOK {
+		fmt.Println("All tests passed successfully")
+	} else {
+		fmt.Println("Some tests failed")
+	}
 }
 
 func runTest(testPath string) bool {
 	if err := exec.Command(testPath).Run(); err != nil {
 		var exitErr *exec.ExitError
-		switch {
-		case errors.As(err, &exitErr):
+		if errors.As(err, &exitErr) {
 			return false
-		default:
-			log.Fatalf("could not run cmd for %s: %v", testPath, err)
 		}
+		log.Fatalf("could not run cmd for %s: %v", testPath, err)
 	}
 	return true
 }
