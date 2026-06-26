@@ -17,7 +17,7 @@ type UniqueIdNode struct {
 	nextMsgID int
 }
 
-func (u UniqueIdNode) InitNode(_encoder *json.Encoder, _events chan node.Event) {
+func (u UniqueIdNode) InitNode(_events chan node.Event) {
 	u.nextMsgID = 0
 }
 

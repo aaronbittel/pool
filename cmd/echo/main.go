@@ -21,7 +21,7 @@ type EchoNode struct {
 	nextMsgID int
 }
 
-func (e *EchoNode) InitNode(encoder *json.Encoder, _events chan node.Event) {
+func (e *EchoNode) InitNode(_events chan node.Event) {
 	e.nextMsgID = 0
 }
 

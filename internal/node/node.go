@@ -50,7 +50,7 @@ type InitOKBody struct {
 }
 
 type Node interface {
-	InitNode(encoder *json.Encoder, events chan Event)
+	InitNode(events chan Event)
 	Step(event Event, encoder *json.Encoder) error
 }
 
@@ -62,7 +62,7 @@ func MainLoop(node Node) {
 
 	go readMessagesFromStdin(events)
 
-	node.InitNode(stdoutEncoder, events)
+	node.InitNode(events)
 
 	for event := range events {
 		if err := node.Step(event, stdoutEncoder); err != nil {

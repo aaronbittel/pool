@@ -70,7 +70,6 @@ type set[T comparable] map[T]struct{}
 
 type BroadcastNode struct {
 	name      string
-	encoder   *json.Encoder
 	nextMsgID int
 
 	messageMutex sync.Mutex // protects messages
@@ -84,8 +83,7 @@ type BroadcastNode struct {
 	known map[string]set[int]
 }
 
-func (b *BroadcastNode) InitNode(encoder *json.Encoder, events chan node.Event) {
-	b.encoder = encoder
+func (b *BroadcastNode) InitNode(events chan node.Event) {
 	b.nextMsgID = 0
 	b.messages = make(set[int])
 	b.known = make(map[string]set[int])
@@ -144,7 +142,7 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 				Dst:     neighbor,
 				RawBody: raw,
 			}
-			if err := b.encoder.Encode(msg); err != nil {
+			if err := encoder.Encode(msg); err != nil {
 				panic(err)
 			}
 		}
