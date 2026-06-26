@@ -80,8 +80,8 @@ func readMessagesFromStdin(events chan Event) {
 	// each message will be on a seperate line
 	scanner := bufio.NewScanner(os.Stdin)
 
-	var msg Msg
 	for scanner.Scan() {
+		var msg Msg
 		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
 			fmt.Fprintf(os.Stderr, "could not unmarshal stdin into msg: %v", err)
 			os.Exit(1)
