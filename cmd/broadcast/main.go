@@ -27,17 +27,6 @@ type ReadOkBody struct {
 	Messages []int `json:"messages"`
 }
 
-func NewReadOkBody(msgID, replyMsgID int, messages []int) ReadOkBody {
-	return ReadOkBody{
-		MsgBody: node.MsgBody{
-			Type:      "read_ok",
-			InReplyTo: replyMsgID,
-			ID:        msgID,
-		},
-		Messages: messages,
-	}
-}
-
 type TopologyBody struct {
 	Topology map[string][]string `json:"topology"`
 }
