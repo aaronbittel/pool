@@ -83,7 +83,7 @@ func (m Msg) IntoReply(id *int) *Msg {
 type MsgBody struct {
 	Type      string `json:"type"`
 	ID        int    `json:"msg_id"`
-	InReplyTo int    `json:"in_reply_to",omitzero`
+	InReplyTo int    `json:"in_reply_to,omitzero"`
 }
 
 type InitBody struct {
