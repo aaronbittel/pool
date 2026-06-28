@@ -131,54 +131,8 @@ func readMessagesFromStdin(events chan Event) {
 	for scanner.Scan() {
 		var msg Msg
 		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
-			fmt.Fprintf(os.Stderr, "could not unmarshal stdin into msg: %v", err)
 			os.Exit(1)
 		}
 		events <- Event{Kind: KindMessage, Msg: &msg}
 	}
-}
-
-func ReplayToInit(msg *Msg, msgID, replyMsgID int, encoder *json.Encoder) error {
-	rawInitOK, err := json.Marshal(NewInitOKBody(msgID, replyMsgID))
-	if err != nil {
-		return fmt.Errorf("could not marshal initOkBody: %v", err)
-	}
-	reply := Msg{
-		Src:     msg.Dst,
-		Dst:     msg.Src,
-		RawBody: rawInitOK,
-	}
-	if err := encoder.Encode(reply); err != nil {
-		return fmt.Errorf("could not encode init replay: %v", err)
-	}
-	return nil
-}
-
-func NewInitOKBody(msgID, replyMsgID int) InitOKBody {
-	return InitOKBody{
-		MsgBody: MsgBody{
-			Type:      "init_ok",
-			InReplyTo: replyMsgID,
-			ID:        msgID,
-		},
-	}
-}
-
-func NewOkReply(msg *Msg, msgID, replyMsgID int, typ string) (Msg, error) {
-	body := MsgBody{
-		Type:      typ,
-		InReplyTo: replyMsgID,
-		ID:        msgID,
-	}
-
-	rawResp, err := json.Marshal(body)
-	if err != nil {
-		return Msg{}, err
-	}
-
-	return Msg{
-		Src:     msg.Dst,
-		Dst:     msg.Src,
-		RawBody: rawResp,
-	}, nil
 }

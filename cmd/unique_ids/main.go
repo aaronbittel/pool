@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/rand"
 	"encoding/json"
-	"fmt"
 
 	"github.com/aaronbittel/pool/internal/node"
 )
@@ -14,21 +13,15 @@ type GenerateOkBody struct {
 }
 
 type UniqueIdNode struct {
-	nextMsgID int
+	ID int
 }
 
 func (u UniqueIdNode) InitNode(_events chan node.Event) {
-	u.nextMsgID = 0
+	u.ID = 0
 }
 
 func (u UniqueIdNode) generateNewID() string {
 	return rand.Text()
-}
-
-func (u *UniqueIdNode) newID() int {
-	id := u.nextMsgID
-	u.nextMsgID += 1
-	return id
 }
 
 func (u UniqueIdNode) Step(event node.Event, encoder *json.Encoder) error {
@@ -36,39 +29,29 @@ func (u UniqueIdNode) Step(event node.Event, encoder *json.Encoder) error {
 		panic("got injected event when there's no event injection")
 	}
 
-	msg := event.Msg
+	reply := event.Msg.IntoReply(&u.ID)
 
-	var body node.MsgBody
-	if err := json.Unmarshal(msg.RawBody, &body); err != nil {
-		return fmt.Errorf("could not unmarshal msg in body %v: %v", msg, err)
-	}
-
-	switch body.Type {
+	switch event.Msg.Type {
 	case "init":
-		if err := node.ReplayToInit(msg, u.newID(), body.ID, encoder); err != nil {
-			fmt.Errorf("could not reply to init: %v", err)
+		initOkBody := node.InitOKBody{MsgBody: reply.MsgBody}
+		if err := reply.MarshalBody(initOkBody); err != nil {
+			return err
+		}
+		if err := reply.Send(encoder); err != nil {
+			return err
 		}
 	case "init_ok":
 		panic("received init_ok")
 	case "generate":
 		idOkBody := GenerateOkBody{
-			MsgBody: node.MsgBody{
-				Type:      "generate_ok",
-				InReplyTo: body.ID,
-			},
+			MsgBody:     reply.MsgBody,
 			GeneratedID: u.generateNewID(),
 		}
-		rawIdOkBody, err := json.Marshal(idOkBody)
-		if err != nil {
-			return fmt.Errorf("could not marshal idOkBody %v: %v", idOkBody, err)
+		if err := reply.MarshalBody(idOkBody); err != nil {
+			return err
 		}
-		reply := node.Msg{
-			Src:     msg.Dst,
-			Dst:     msg.Src,
-			RawBody: rawIdOkBody,
-		}
-		if err := encoder.Encode(reply); err != nil {
-			return fmt.Errorf("could not encode %v", err)
+		if err := reply.Send(encoder); err != nil {
+			return err
 		}
 	default:
 		panic("received unknown msg type")

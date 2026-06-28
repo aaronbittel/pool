@@ -62,8 +62,8 @@ func NewTopologyOkBody(messages []int) TopologyOkBody {
 type set[T comparable] map[T]struct{}
 
 type BroadcastNode struct {
-	name      string
-	nextMsgID int
+	name string
+	ID   int
 
 	messages set[int]
 
@@ -84,7 +84,7 @@ type GossipEvent struct{}
 func (GossipEvent) IsInjected() {}
 
 func (b *BroadcastNode) InitNode(events chan node.Event) {
-	b.nextMsgID = 0
+	b.ID = 0
 	b.messages = make(set[int])
 	b.known = make(map[string]set[int])
 	b.extraPerc = 10
@@ -101,12 +101,6 @@ func (b *BroadcastNode) InitNode(events chan node.Event) {
 			}
 		}
 	}()
-}
-
-func (b *BroadcastNode) newID() int {
-	id := b.nextMsgID
-	b.nextMsgID += 1
-	return id
 }
 
 func (b *BroadcastNode) messageSlice() []int {
@@ -134,102 +128,102 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 				}
 			}
 
-			body := GossipBody{
-				MsgBody:  node.MsgBody{Type: "gossip", ID: b.newID()},
+			msg := node.Msg{
+				Src: b.name,
+				Dst: neighbor,
+			}
+			gossipBody := GossipBody{
+				MsgBody:  node.MsgBody{Type: "gossip"},
 				Messages: sendToNeighbor,
 			}
-			raw, err := json.Marshal(body)
-			if err != nil {
-				panic(err)
-			}
-			msg := node.Msg{
-				Src:     b.name,
-				Dst:     neighbor,
-				RawBody: raw,
-			}
+			msg.MarshalBody(gossipBody)
 			if err := encoder.Encode(msg); err != nil {
-				panic(err)
+				return err
 			}
 		}
 	case node.KindMessage:
-		msg := event.Msg
+		reply := event.Msg.IntoReply(&b.ID)
 
-		var body node.MsgBody
-		if err := json.Unmarshal(msg.RawBody, &body); err != nil {
-			return fmt.Errorf("could not unmarshal msg in body %v: %v", msg, err)
-		}
-
-		switch body.Type {
+		switch event.Msg.Type {
 		case "init":
-			var initBody node.InitBody
-			if err := json.Unmarshal(msg.RawBody, &initBody); err != nil {
-				return fmt.Errorf("could not unmarshal rawbody: %v", err)
+			var init node.InitBody
+			if err := json.Unmarshal(event.Msg.RawBody, &init); err != nil {
+				return err
 			}
-			b.name = initBody.NodeID
 
-			if err := node.ReplayToInit(msg, b.newID(), body.ID, encoder); err != nil {
-				return fmt.Errorf("could not reply to init: %v", err)
+			b.name = init.NodeID
+
+			initOkBody := node.InitOKBody{MsgBody: reply.MsgBody}
+			if err := reply.MarshalBody(initOkBody); err != nil {
+				return err
+			}
+			if err := reply.Send(encoder); err != nil {
+				return err
 			}
 		case "broadcast":
 			var broadcastBody BroadcastBody
-			if err := json.Unmarshal(msg.RawBody, &broadcastBody); err != nil {
-				return fmt.Errorf("could not unmarshal %v: %v", msg.RawBody, err)
+			if err := json.Unmarshal(event.Msg.RawBody, &broadcastBody); err != nil {
+				return err
 			}
 
 			b.messages[broadcastBody.Message] = struct{}{}
 
-			broadcastOkMsg, err := node.NewOkReply(msg, b.newID(), body.ID, "broadcast_ok")
-			if err != nil {
-				return fmt.Errorf("could not create BroadcastOk msg: %v", err)
+			payload := BroadcastOkBody{MsgBody: reply.MsgBody}
+			if err := reply.MarshalBody(payload); err != nil {
+				return err
 			}
-			if err := encoder.Encode(broadcastOkMsg); err != nil {
-				return fmt.Errorf("could not encode BroadcastOk msg: %v", err)
+
+			if err := reply.Send(encoder); err != nil {
+				return err
 			}
 		case "read":
 			var readBody ReadBody
-			if err := json.Unmarshal(msg.RawBody, &readBody); err != nil {
-				return fmt.Errorf("could not unmarshal %v: %v", msg.RawBody, err)
+			if err := json.Unmarshal(event.Msg.RawBody, &readBody); err != nil {
+				return err
 			}
-			rawReadOkBody, err := json.Marshal(NewReadOkBody(b.newID(), body.ID, b.messageSlice()))
-			if err != nil {
-				return fmt.Errorf("could not marshal readOkBody: %v", err)
+
+			payload := ReadOkBody{
+				MsgBody:  reply.MsgBody,
+				Messages: b.messageSlice(),
 			}
-			reply := node.Msg{
-				Src:     msg.Dst,
-				Dst:     msg.Src,
-				RawBody: rawReadOkBody,
+			if err := reply.MarshalBody(payload); err != nil {
+				return err
 			}
-			if err := encoder.Encode(reply); err != nil {
-				return fmt.Errorf("could not encode ReadOkBody msg: %v", err)
+
+			if err := reply.Send(encoder); err != nil {
+				return err
 			}
 		case "topology":
 			var topologyBody TopologyBody
-			if err := json.Unmarshal(msg.RawBody, &topologyBody); err != nil {
-				return fmt.Errorf("could not unmarshal %v: %v", msg.RawBody, err)
+			if err := json.Unmarshal(event.Msg.RawBody, &topologyBody); err != nil {
+				return err
 			}
+
 			b.topology = topologyBody.Topology
 			for _, neigbour := range b.topology[b.name] {
 				b.known[neigbour] = make(set[int])
 			}
-			topologyOkMsg, err := node.NewOkReply(msg, b.newID(), body.ID, "topology_ok")
-			if err != nil {
-				return fmt.Errorf("could not create TopologyOk msg: %v", err)
+
+			payload := TopologyOkBody{MsgBody: reply.MsgBody}
+			if err := reply.MarshalBody(payload); err != nil {
+				return err
 			}
-			if err := encoder.Encode(topologyOkMsg); err != nil {
-				return fmt.Errorf("could not encode TopologyOk msg: %v", err)
+
+			if err := reply.Send(encoder); err != nil {
+				return err
 			}
 		case "gossip":
 			var gossipBody GossipBody
-			if err := json.Unmarshal(msg.RawBody, &gossipBody); err != nil {
+			if err := json.Unmarshal(event.Msg.RawBody, &gossipBody); err != nil {
 				panic(err)
 			}
 			for _, m := range gossipBody.Messages {
-				b.known[msg.Src][m] = struct{}{}
+				b.known[reply.Dst][m] = struct{}{}
 				b.messages[m] = struct{}{}
 			}
 		case "broadcast_ok", "read_ok", "topology_ok":
 		default:
-			panic(fmt.Sprintf("received unknown message type %q", body.Type))
+			panic(fmt.Sprintf("received unknown message type %q", event.Msg.Type))
 		}
 	default:
 		panic(fmt.Sprintf("got unexpected event kind %d", event.Kind))

@@ -17,11 +17,11 @@ type EchoOKBody struct {
 }
 
 type EchoNode struct {
-	ID int
+	id int
 }
 
 func (e *EchoNode) InitNode(_events chan node.Event) {
-	e.ID = 0
+	e.id = 0
 }
 
 func (e *EchoNode) Step(event node.Event, encoder *json.Encoder) error {
@@ -29,12 +29,16 @@ func (e *EchoNode) Step(event node.Event, encoder *json.Encoder) error {
 		panic("got injected event when there's no event injection")
 	}
 
-	reply := event.Msg.IntoReply(&e.ID)
+	reply := event.Msg.IntoReply(&e.id)
 
 	switch event.Msg.Type {
 	case "init":
-		if err := node.ReplayToInit(event.Msg, e.ID, event.Msg.ID, encoder); err != nil {
-			fmt.Errorf("could not reply to init: %v", err)
+		initOkBody := node.InitOKBody{MsgBody: reply.MsgBody}
+		if err := reply.MarshalBody(initOkBody); err != nil {
+			return err
+		}
+		if err := reply.Send(encoder); err != nil {
+			return err
 		}
 	case "echo":
 		var echo EchoBody

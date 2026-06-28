@@ -24,14 +24,14 @@ func TestEchoNode(t *testing.T) {
 
 			msgBody := node.MsgBody{
 				Type:      "init_ok",
-				ID:        1,
+				ID:        0,
 				InReplyTo: id,
 			}
 			wantInitOkMsg := newTestOkMsg(t, "destination", "source", msgBody, node.InitOKBody{
 				MsgBody: msgBody,
 			})
 
-			jsonRecorder := newTestJsonRecorder(&EchoNode{})
+			jsonRecorder := newTestJsonRecorder(&EchoNode{id: 0})
 			gotInitOkMsg := jsonRecorder.step(t, node.Event{Kind: node.KindMessage, Msg: &initMsg})
 			assert.Equal(t, wantInitOkMsg, gotInitOkMsg)
 		})
