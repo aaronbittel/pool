@@ -3,6 +3,8 @@ package main
 import (
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
+	"os"
 
 	"github.com/aaronbittel/pool/internal/node"
 )
@@ -16,8 +18,9 @@ type UniqueIdNode struct {
 	ID int
 }
 
-func (u UniqueIdNode) InitNode(_events chan node.Event) {
+func (u UniqueIdNode) InitNode(_initBody node.InitBody, _events chan node.Event) node.Node {
 	u.ID = 0
+	return u
 }
 
 func (u UniqueIdNode) generateNewID() string {
@@ -32,16 +35,6 @@ func (u UniqueIdNode) Step(event node.Event, encoder *json.Encoder) error {
 	reply := event.Msg.IntoReply(&u.ID)
 
 	switch event.Msg.Type {
-	case "init":
-		initOkBody := node.InitOKBody{MsgBody: reply.MsgBody}
-		if err := reply.MarshalBody(initOkBody); err != nil {
-			return err
-		}
-		if err := reply.Send(encoder); err != nil {
-			return err
-		}
-	case "init_ok":
-		panic("received init_ok")
 	case "generate":
 		idOkBody := GenerateOkBody{
 			MsgBody:     reply.MsgBody,
@@ -60,5 +53,8 @@ func (u UniqueIdNode) Step(event node.Event, encoder *json.Encoder) error {
 	return nil
 }
 func main() {
-	node.MainLoop(UniqueIdNode{})
+	if err := node.MainLoop(UniqueIdNode{}); err != nil {
+		fmt.Fprintf(os.Stderr, "UniqueIdNode failed: %v", err)
+		os.Exit(1)
+	}
 }

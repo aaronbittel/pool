@@ -96,7 +96,7 @@ type InitOKBody struct {
 }
 
 type Node interface {
-	InitNode(events chan Event)
+	InitNode(initBody InitBody, events chan Event) Node
 	Step(event Event, encoder *json.Encoder) error
 }
 
@@ -107,21 +107,46 @@ func (m *Msg) Send(encoder *json.Encoder) error {
 	return nil
 }
 
-func MainLoop(node Node) {
+func MainLoop(node Node) error {
 	var (
 		events        = make(chan Event)
 		stdoutEncoder = json.NewEncoder(os.Stdout)
 	)
 
-	go readMessagesFromStdin(events)
+	scanner := bufio.NewScanner(os.Stdin)
+	if scanner.Scan() {
+		var msg Msg
+		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
+			return fmt.Errorf("could not read init message from stdin: %v", err)
+		}
+		if msg.Type != "init" {
+			return fmt.Errorf("expected init message, got %q", msg.Type)
+		}
 
-	node.InitNode(events)
+		var initBody InitBody
+		if err := json.Unmarshal(msg.RawBody, &initBody); err != nil {
+			return fmt.Errorf("could not marshal body into initBody: %v", err)
+		}
+
+		node = node.InitNode(initBody, events)
+
+		reply := msg.IntoReply(new(0))
+		reply.MarshalBody(reply.MsgBody)
+
+		if err := reply.Send(stdoutEncoder); err != nil {
+			return fmt.Errorf("could not encode initMsg: %v", err)
+		}
+	}
+
+	go readMessagesFromStdin(events)
 
 	for event := range events {
 		if err := node.Step(event, stdoutEncoder); err != nil {
-			panic(err)
+			return err
 		}
 	}
+
+	return nil
 }
 
 func readMessagesFromStdin(events chan Event) {

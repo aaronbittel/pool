@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/aaronbittel/pool/internal/node"
@@ -69,7 +70,8 @@ type GossipEvent struct{}
 
 func (GossipEvent) IsInjected() {}
 
-func (b *BroadcastNode) InitNode(events chan node.Event) {
+func (b *BroadcastNode) InitNode(initBody node.InitBody, events chan node.Event) node.Node {
+	b.name = initBody.NodeID
 	b.ID = 0
 	b.messages = make(set[int])
 	b.known = make(map[string]set[int])
@@ -87,6 +89,8 @@ func (b *BroadcastNode) InitNode(events chan node.Event) {
 			}
 		}
 	}()
+
+	return b
 }
 
 func (b *BroadcastNode) messagesAsSlice() []int {
@@ -131,21 +135,6 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 		reply := event.Msg.IntoReply(&b.ID)
 
 		switch event.Msg.Type {
-		case "init":
-			var init node.InitBody
-			if err := json.Unmarshal(event.Msg.RawBody, &init); err != nil {
-				return err
-			}
-
-			b.name = init.NodeID
-
-			initOkBody := node.InitOKBody{MsgBody: reply.MsgBody}
-			if err := reply.MarshalBody(initOkBody); err != nil {
-				return err
-			}
-			if err := reply.Send(encoder); err != nil {
-				return err
-			}
 		case "broadcast":
 			var broadcastBody BroadcastBody
 			if err := json.Unmarshal(event.Msg.RawBody, &broadcastBody); err != nil {
@@ -214,5 +203,8 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 }
 
 func main() {
-	node.MainLoop(&BroadcastNode{})
+	if err := node.MainLoop(&BroadcastNode{}); err != nil {
+		fmt.Fprintf(os.Stderr, "BroadcastNode failed: %v", err)
+		os.Exit(1)
+	}
 }

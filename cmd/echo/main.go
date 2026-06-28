@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/aaronbittel/pool/internal/node"
 )
@@ -20,8 +21,9 @@ type EchoNode struct {
 	id int
 }
 
-func (e *EchoNode) InitNode(_events chan node.Event) {
+func (e *EchoNode) InitNode(_initBody node.InitBody, _events chan node.Event) node.Node {
 	e.id = 0
+	return e
 }
 
 func (e *EchoNode) Step(event node.Event, encoder *json.Encoder) error {
@@ -32,14 +34,6 @@ func (e *EchoNode) Step(event node.Event, encoder *json.Encoder) error {
 	reply := event.Msg.IntoReply(&e.id)
 
 	switch event.Msg.Type {
-	case "init":
-		initOkBody := node.InitOKBody{MsgBody: reply.MsgBody}
-		if err := reply.MarshalBody(initOkBody); err != nil {
-			return err
-		}
-		if err := reply.Send(encoder); err != nil {
-			return err
-		}
 	case "echo":
 		var echo EchoBody
 		if err := json.Unmarshal(event.Msg.RawBody, &echo); err != nil {
@@ -53,8 +47,6 @@ func (e *EchoNode) Step(event node.Event, encoder *json.Encoder) error {
 			return err
 		}
 	case "echo_ok":
-	case "init_ok":
-		panic("received init_ok msg")
 	default:
 		panic(fmt.Sprintf("illegal msg type %q", event.Msg.Type))
 	}
@@ -63,5 +55,8 @@ func (e *EchoNode) Step(event node.Event, encoder *json.Encoder) error {
 }
 
 func main() {
-	node.MainLoop(&EchoNode{})
+	if err := node.MainLoop(&EchoNode{}); err != nil {
+		fmt.Fprintf(os.Stderr, "EchoNode failed: %v", err)
+		os.Exit(1)
+	}
 }
