@@ -107,57 +107,74 @@ func (m *Msg) Send(encoder *json.Encoder) error {
 	return nil
 }
 
-func MainLoop(node Node) error {
+func MainLoop(node Node) (err error) {
 	var (
 		events        = make(chan Event)
 		stdoutEncoder = json.NewEncoder(os.Stdout)
 	)
 
 	scanner := bufio.NewScanner(os.Stdin)
-	if scanner.Scan() {
-		var msg Msg
-		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
-			return fmt.Errorf("could not read init message from stdin: %v", err)
-		}
-		if msg.Type != "init" {
-			return fmt.Errorf("expected init message, got %q", msg.Type)
-		}
-
-		var initBody InitBody
-		if err := json.Unmarshal(msg.RawBody, &initBody); err != nil {
-			return fmt.Errorf("could not marshal body into initBody: %v", err)
-		}
-
-		node = node.InitNode(initBody, events)
-
-		reply := msg.IntoReply(new(0))
-		reply.MarshalBody(reply.MsgBody)
-
-		if err := reply.Send(stdoutEncoder); err != nil {
-			return fmt.Errorf("could not encode initMsg: %v", err)
-		}
+	if !scanner.Scan() {
+		return scanner.Err()
 	}
 
-	go readMessagesFromStdin(events)
+	var msg Msg
+	if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
+		return fmt.Errorf("could not read init message from stdin: %v", err)
+	}
+	if msg.Type != "init" {
+		return fmt.Errorf("expected init message, got %q", msg.Type)
+	}
 
-	for event := range events {
-		if err := node.Step(event, stdoutEncoder); err != nil {
+	var initBody InitBody
+	if err := json.Unmarshal(msg.RawBody, &initBody); err != nil {
+		return fmt.Errorf("could not marshal body into initBody: %v", err)
+	}
+
+	node = node.InitNode(initBody, events)
+
+	reply := msg.IntoReply(new(0))
+	reply.MarshalBody(reply.MsgBody)
+
+	if err := reply.Send(stdoutEncoder); err != nil {
+		return fmt.Errorf("could not encode initMsg: %v", err)
+	}
+
+	errs := make(chan error, 1)
+	go readMessagesFromStdin(events, errs)
+
+	for {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				return nil
+			}
+			if err := node.Step(event, stdoutEncoder); err != nil {
+				return err
+			}
+		case err := <-errs:
 			return err
 		}
 	}
-
-	return nil
 }
 
-func readMessagesFromStdin(events chan Event) {
+func readMessagesFromStdin(events chan Event, errs chan<- error) {
+	defer close(events)
+	defer close(errs)
+
 	// each message will be on a seperate line
 	scanner := bufio.NewScanner(os.Stdin)
 
 	for scanner.Scan() {
 		var msg Msg
 		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
-			os.Exit(1)
+			errs <- fmt.Errorf("invalid message: %w", err)
+			return
 		}
 		events <- Event{Kind: KindMessage, Msg: &msg}
+	}
+
+	if err := scanner.Err(); err != nil {
+		errs <- fmt.Errorf("stdin read error: %w", err)
 	}
 }
