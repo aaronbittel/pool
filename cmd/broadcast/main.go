@@ -95,7 +95,7 @@ func (b *BroadcastNode) InitNode(events chan node.Event) {
 			select {
 			case <-ticker.C:
 				events <- node.Event{
-					Kind:     node.Injected,
+					Kind:     node.KindInjected,
 					Injected: GossipEvent{},
 				}
 			}
@@ -119,7 +119,7 @@ func (b *BroadcastNode) messageSlice() []int {
 
 func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 	switch event.Kind {
-	case node.Injected:
+	case node.KindInjected:
 		// received an event to do gossip
 		for _, neighbor := range b.topology[b.name] {
 			allMessages := b.messageSlice()
@@ -151,7 +151,7 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 				panic(err)
 			}
 		}
-	case node.Message:
+	case node.KindMessage:
 		msg := event.Msg
 
 		var body node.MsgBody
@@ -194,7 +194,12 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 			if err != nil {
 				return fmt.Errorf("could not marshal readOkBody: %v", err)
 			}
-			if err := encoder.Encode(node.NewReply(msg, rawReadOkBody)); err != nil {
+			reply := node.Msg{
+				Src:     msg.Dst,
+				Dst:     msg.Src,
+				RawBody: rawReadOkBody,
+			}
+			if err := encoder.Encode(reply); err != nil {
 				return fmt.Errorf("could not encode ReadOkBody msg: %v", err)
 			}
 		case "topology":

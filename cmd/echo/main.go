@@ -43,34 +43,26 @@ func (e *EchoNode) newID() int {
 }
 
 func (e *EchoNode) Step(event node.Event, encoder *json.Encoder) error {
-	if event.Kind != node.Message {
+	if event.Kind != node.KindMessage {
 		panic("got injected event when there's no event injection")
 	}
 
-	msg := event.Msg
-
-	var body node.MsgBody
-
-	if err := json.Unmarshal(msg.RawBody, &body); err != nil {
-		return fmt.Errorf("could not unmarshal msg in body %v: %v", msg, err)
-	}
-
-	switch body.Type {
+	switch event.Msg.Type {
 	case "init":
-		if err := node.ReplayToInit(msg, e.newID(), body.ID, encoder); err != nil {
+		if err := node.ReplayToInit(event.Msg, e.newID(), event.Msg.ID, encoder); err != nil {
 			fmt.Errorf("could not reply to init: %v", err)
 		}
 	case "echo":
 		var echo EchoBody
-		if err := json.Unmarshal(msg.RawBody, &echo); err != nil {
+		if err := json.Unmarshal(event.Msg.RawBody, &echo); err != nil {
 			fmt.Errorf("could not unmarshal raw msg body into EchoBody: %v", err)
 		}
-		rawEchoOK, err := json.Marshal(e.echoOKBody(echo))
+		reply, err := node.ReplyTo(*event.Msg, e.echoOKBody(echo))
 		if err != nil {
-			fmt.Errorf("could not marshal echoOkBody: %v", err)
+			return err
 		}
-		if err := encoder.Encode(node.NewReply(msg, rawEchoOK)); err != nil {
-			return fmt.Errorf("could not encode echo replay: %v", err)
+		if err := reply.Send(encoder); err != nil {
+			return err
 		}
 	case "echo_ok":
 	case "init_ok":

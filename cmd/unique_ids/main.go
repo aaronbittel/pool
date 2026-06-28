@@ -32,7 +32,7 @@ func (u *UniqueIdNode) newID() int {
 }
 
 func (u UniqueIdNode) Step(event node.Event, encoder *json.Encoder) error {
-	if event.Kind != node.Message {
+	if event.Kind != node.KindMessage {
 		panic("got injected event when there's no event injection")
 	}
 
@@ -62,9 +62,13 @@ func (u UniqueIdNode) Step(event node.Event, encoder *json.Encoder) error {
 		if err != nil {
 			return fmt.Errorf("could not marshal idOkBody %v: %v", idOkBody, err)
 		}
-		idOkMsg := node.NewReply(msg, rawIdOkBody)
-		if err := encoder.Encode(idOkMsg); err != nil {
-			return fmt.Errorf("could not encode %v: %v", idOkMsg, err)
+		reply := node.Msg{
+			Src:     msg.Dst,
+			Dst:     msg.Src,
+			RawBody: rawIdOkBody,
+		}
+		if err := encoder.Encode(reply); err != nil {
+			return fmt.Errorf("could not encode %v", err)
 		}
 	default:
 		panic("received unknown msg type")

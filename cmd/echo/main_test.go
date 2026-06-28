@@ -30,7 +30,7 @@ func TestEchoNode(t *testing.T) {
 			})
 
 			jsonRecorder := newTestJsonRecorder(&EchoNode{})
-			gotInitOkMsg := jsonRecorder.step(t, node.Event{Kind: node.Message, Msg: &initMsg})
+			gotInitOkMsg := jsonRecorder.step(t, node.Event{Kind: node.KindMessage, Msg: &initMsg})
 			assert.Equal(t, wantInitOkMsg, gotInitOkMsg)
 		})
 	}

@@ -10,8 +10,8 @@ import (
 type MessageKind int
 
 const (
-	Message MessageKind = iota
-	Injected
+	KindMessage MessageKind = iota
+	KindInjected
 )
 
 type InjectedMessage interface {
@@ -25,17 +25,45 @@ type Event struct {
 }
 
 type Msg struct {
-	Src     string          `json:"src"`
-	Dst     string          `json:"dest"`
+	Src string `json:"src"`
+	Dst string `json:"dest"`
+	// Extracted fields type, msg_id and in_reply_to. Those are also present in the
+	// RawBody
+	MsgBody `json:"-"`
+	// Complete Raw body of the JSOn
 	RawBody json.RawMessage `json:"body"`
 }
 
-func NewReply(msg *Msg, rawBody json.RawMessage) Msg {
-	return Msg{
-		Src:     msg.Dst,
-		Dst:     msg.Src,
-		RawBody: rawBody,
+func (m *Msg) UnmarshalJSON(b []byte) error {
+	var aux struct {
+		Src  string          `json:"src"`
+		Dst  string          `json:"dest"`
+		Body json.RawMessage `json:"body"`
 	}
+
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+
+	m.Src = aux.Src
+	m.Dst = aux.Dst
+	m.RawBody = aux.Body
+
+	var msgBody struct {
+		Type      string `json:"type"`
+		ID        int    `json:"msg_id"`
+		InReplyTo int    `json:"in_reply_to",omitzero`
+	}
+
+	if err := json.Unmarshal(m.RawBody, &msgBody); err != nil {
+		return err
+	}
+
+	m.MsgBody.Type = msgBody.Type
+	m.MsgBody.ID = msgBody.ID
+	m.MsgBody.InReplyTo = msgBody.InReplyTo
+
+	return nil
 }
 
 type MsgBody struct {
@@ -57,6 +85,26 @@ type InitOKBody struct {
 type Node interface {
 	InitNode(events chan Event)
 	Step(event Event, encoder *json.Encoder) error
+}
+
+func (m *Msg) Send(encoder *json.Encoder) error {
+	if err := encoder.Encode(m); err != nil {
+		return fmt.Errorf("could not encode echo replay: %v", err)
+	}
+	return nil
+}
+
+func ReplyTo(msg Msg, withPayload any) (*Msg, error) {
+	rawPayload, err := json.Marshal(withPayload)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Msg{
+		Src:     msg.Dst,
+		Dst:     msg.Src,
+		RawBody: rawPayload,
+	}, nil
 }
 
 func MainLoop(node Node) {
@@ -86,7 +134,7 @@ func readMessagesFromStdin(events chan Event) {
 			fmt.Fprintf(os.Stderr, "could not unmarshal stdin into msg: %v", err)
 			os.Exit(1)
 		}
-		events <- Event{Kind: Message, Msg: &msg}
+		events <- Event{Kind: KindMessage, Msg: &msg}
 	}
 }
 
@@ -95,7 +143,12 @@ func ReplayToInit(msg *Msg, msgID, replyMsgID int, encoder *json.Encoder) error 
 	if err != nil {
 		return fmt.Errorf("could not marshal initOkBody: %v", err)
 	}
-	if err := encoder.Encode(NewReply(msg, rawInitOK)); err != nil {
+	reply := Msg{
+		Src:     msg.Dst,
+		Dst:     msg.Src,
+		RawBody: rawInitOK,
+	}
+	if err := encoder.Encode(reply); err != nil {
 		return fmt.Errorf("could not encode init replay: %v", err)
 	}
 	return nil

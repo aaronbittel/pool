@@ -59,7 +59,7 @@ func TestGossipExtraMessages(t *testing.T) {
 
 			var buf bytes.Buffer
 			bytesEncoder := json.NewEncoder(&buf)
-			require.NoError(t, node0.Step(node.Event{Kind: node.Injected}, bytesEncoder))
+			require.NoError(t, node0.Step(node.Event{Kind: node.KindInjected}, bytesEncoder))
 
 			var msg node.Msg
 			require.NoError(t, json.Unmarshal(buf.Bytes(), &msg))
