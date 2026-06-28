@@ -15,11 +15,12 @@ type GenerateOkBody struct {
 }
 
 type UniqueIdNode struct {
-	ID int
+	id int
 }
 
 func (u UniqueIdNode) InitNode(_initBody node.InitBody, _events chan node.Event) node.Node {
-	u.ID = 0
+	// start from 1 because MainLoop write the first message (init)
+	u.id = 1
 	return u
 }
 
@@ -32,7 +33,7 @@ func (u UniqueIdNode) Step(event node.Event, encoder *json.Encoder) error {
 		panic("got injected event when there's no event injection")
 	}
 
-	reply := event.Msg.IntoReply(&u.ID)
+	reply := event.Msg.IntoReply(&u.id)
 
 	switch event.Msg.Type {
 	case "generate":

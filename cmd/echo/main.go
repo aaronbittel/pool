@@ -22,7 +22,8 @@ type EchoNode struct {
 }
 
 func (e *EchoNode) InitNode(_initBody node.InitBody, _events chan node.Event) node.Node {
-	e.id = 0
+	// start from 1 because MainLoop write the first message (init)
+	e.id = 1
 	return e
 }
 

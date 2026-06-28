@@ -50,7 +50,7 @@ type set[T comparable] map[T]struct{}
 
 type BroadcastNode struct {
 	name string
-	ID   int
+	id   int
 
 	messages set[int]
 
@@ -72,7 +72,8 @@ func (GossipEvent) IsInjected() {}
 
 func (b *BroadcastNode) InitNode(initBody node.InitBody, events chan node.Event) node.Node {
 	b.name = initBody.NodeID
-	b.ID = 0
+	// start from 1 because MainLoop write the first message (init)
+	b.id = 1
 	b.messages = make(set[int])
 	b.known = make(map[string]set[int])
 	b.extraPerc = 10
@@ -132,7 +133,7 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 			}
 		}
 	case node.KindMessage:
-		reply := event.Msg.IntoReply(&b.ID)
+		reply := event.Msg.IntoReply(&b.id)
 
 		switch event.Msg.Type {
 		case "broadcast":
