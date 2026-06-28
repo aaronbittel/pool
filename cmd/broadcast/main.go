@@ -14,15 +14,10 @@ type GossipBody struct {
 }
 
 type BroadcastBody struct {
-	node.MsgBody
 	Message int `json:"message"`
 }
 
 type BroadcastOkBody struct {
-	node.MsgBody
-}
-
-type ReadBody struct {
 	node.MsgBody
 }
 
@@ -43,20 +38,11 @@ func NewReadOkBody(msgID, replyMsgID int, messages []int) ReadOkBody {
 }
 
 type TopologyBody struct {
-	node.MsgBody
 	Topology map[string][]string `json:"topology"`
 }
 
 type TopologyOkBody struct {
 	node.MsgBody
-}
-
-func NewTopologyOkBody(messages []int) TopologyOkBody {
-	return TopologyOkBody{
-		MsgBody: node.MsgBody{
-			Type: "topology_ok",
-		},
-	}
 }
 
 type set[T comparable] map[T]struct{}
@@ -103,7 +89,7 @@ func (b *BroadcastNode) InitNode(events chan node.Event) {
 	}()
 }
 
-func (b *BroadcastNode) messageSlice() []int {
+func (b *BroadcastNode) messagesAsSlice() []int {
 	messages := make([]int, 0, len(b.messages))
 	for m := range b.messages {
 		messages = append(messages, m)
@@ -116,7 +102,7 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 	case node.KindInjected:
 		// received an event to do gossip
 		for _, neighbor := range b.topology[b.name] {
-			allMessages := b.messageSlice()
+			allMessages := b.messagesAsSlice()
 			additional := ((len(allMessages) - len(b.known[neighbor])) * b.extraPerc) / 100
 			sendToNeighbor := []int{}
 			for _, message := range allMessages {
@@ -177,14 +163,9 @@ func (b *BroadcastNode) Step(event node.Event, encoder *json.Encoder) error {
 				return err
 			}
 		case "read":
-			var readBody ReadBody
-			if err := json.Unmarshal(event.Msg.RawBody, &readBody); err != nil {
-				return err
-			}
-
 			payload := ReadOkBody{
 				MsgBody:  reply.MsgBody,
-				Messages: b.messageSlice(),
+				Messages: b.messagesAsSlice(),
 			}
 			if err := reply.MarshalBody(payload); err != nil {
 				return err
