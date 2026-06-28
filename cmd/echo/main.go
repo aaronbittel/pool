@@ -8,7 +8,6 @@ import (
 )
 
 type EchoBody struct {
-	node.MsgBody
 	Echo string `json:"echo"`
 }
 
@@ -18,28 +17,11 @@ type EchoOKBody struct {
 }
 
 type EchoNode struct {
-	nextMsgID int
+	ID int
 }
 
 func (e *EchoNode) InitNode(_events chan node.Event) {
-	e.nextMsgID = 0
-}
-
-func (e *EchoNode) echoOKBody(echo EchoBody) EchoOKBody {
-	return EchoOKBody{
-		MsgBody: node.MsgBody{
-			Type:      "echo_ok",
-			ID:        e.newID(),
-			InReplyTo: echo.ID,
-		},
-		Echo: echo.Echo,
-	}
-}
-
-func (e *EchoNode) newID() int {
-	id := e.nextMsgID
-	e.nextMsgID += 1
-	return id
+	e.ID = 0
 }
 
 func (e *EchoNode) Step(event node.Event, encoder *json.Encoder) error {
@@ -47,18 +29,20 @@ func (e *EchoNode) Step(event node.Event, encoder *json.Encoder) error {
 		panic("got injected event when there's no event injection")
 	}
 
+	reply := event.Msg.IntoReply(&e.ID)
+
 	switch event.Msg.Type {
 	case "init":
-		if err := node.ReplayToInit(event.Msg, e.newID(), event.Msg.ID, encoder); err != nil {
+		if err := node.ReplayToInit(event.Msg, e.ID, event.Msg.ID, encoder); err != nil {
 			fmt.Errorf("could not reply to init: %v", err)
 		}
 	case "echo":
 		var echo EchoBody
 		if err := json.Unmarshal(event.Msg.RawBody, &echo); err != nil {
-			fmt.Errorf("could not unmarshal raw msg body into EchoBody: %v", err)
+			return err
 		}
-		reply, err := node.ReplyTo(*event.Msg, e.echoOKBody(echo))
-		if err != nil {
+		payload := EchoOKBody{MsgBody: reply.MsgBody, Echo: echo.Echo}
+		if err := reply.MarshalBody(payload); err != nil {
 			return err
 		}
 		if err := reply.Send(encoder); err != nil {
@@ -68,7 +52,7 @@ func (e *EchoNode) Step(event node.Event, encoder *json.Encoder) error {
 	case "init_ok":
 		panic("received init_ok msg")
 	default:
-		panic("illegal msg type")
+		panic(fmt.Sprintf("illegal msg type %q", event.Msg.Type))
 	}
 
 	return nil

@@ -14,19 +14,21 @@ import (
 func TestEchoNode(t *testing.T) {
 	for _, id := range []int{1, 10, 100} {
 		t.Run(fmt.Sprintf("id:%d", id), func(t *testing.T) {
-			initMsg := NewInitMsg(t, "source", "destination", node.InitBody{
-				MsgBody: node.MsgBody{
-					Type: "init",
-					ID:   id,
-				},
+			initMsg := newTestMsg(t, "source", "destination", node.MsgBody{
+				Type: "init",
+				ID:   id,
+			}, node.InitBody{
 				NodeID:  "node1",
 				NodeIDs: []string{"node1", "node2", "node3"},
 			})
 
-			wantInitOkMsg := NewInitOkMsg(t, "destination", "source", node.MsgBody{
+			msgBody := node.MsgBody{
 				Type:      "init_ok",
-				ID:        0,
+				ID:        1,
 				InReplyTo: id,
+			}
+			wantInitOkMsg := newTestOkMsg(t, "destination", "source", msgBody, node.InitOKBody{
+				MsgBody: msgBody,
 			})
 
 			jsonRecorder := newTestJsonRecorder(&EchoNode{})
@@ -55,24 +57,26 @@ func (jr *jsonRecorder) step(t *testing.T, event node.Event) node.Msg {
 	return resp
 }
 
-func NewInitMsg(t *testing.T, src, dst string, init node.InitBody) node.Msg {
-	rawInitBody, err := json.Marshal(init)
+func newTestMsg(t *testing.T, src, dst string, msgBody node.MsgBody, payload any) node.Msg {
+	raw, err := json.Marshal(payload)
 	require.NoError(t, err)
 
 	return node.Msg{
 		Src:     src,
 		Dst:     dst,
-		RawBody: rawInitBody,
+		MsgBody: msgBody,
+		RawBody: raw,
 	}
 }
 
-func NewInitOkMsg(t *testing.T, src, dst string, msgBody node.MsgBody) node.Msg {
-	rawInitBody, err := json.Marshal(node.InitOKBody{msgBody})
+func newTestOkMsg(t *testing.T, src, dst string, body node.MsgBody, payload any) node.Msg {
+	raw, err := json.Marshal(payload)
 	require.NoError(t, err)
 
 	return node.Msg{
 		Src:     src,
 		Dst:     dst,
-		RawBody: rawInitBody,
+		MsgBody: body,
+		RawBody: raw,
 	}
 }

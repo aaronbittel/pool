@@ -36,9 +36,9 @@ type Msg struct {
 
 func (m *Msg) UnmarshalJSON(b []byte) error {
 	var aux struct {
-		Src  string          `json:"src"`
-		Dst  string          `json:"dest"`
-		Body json.RawMessage `json:"body"`
+		Src     string          `json:"src"`
+		Dst     string          `json:"dest"`
+		BodyRaw json.RawMessage `json:"body"`
 	}
 
 	if err := json.Unmarshal(b, &aux); err != nil {
@@ -47,23 +47,37 @@ func (m *Msg) UnmarshalJSON(b []byte) error {
 
 	m.Src = aux.Src
 	m.Dst = aux.Dst
-	m.RawBody = aux.Body
+	m.RawBody = aux.BodyRaw
 
-	var msgBody struct {
-		Type      string `json:"type"`
-		ID        int    `json:"msg_id"`
-		InReplyTo int    `json:"in_reply_to",omitzero`
-	}
-
-	if err := json.Unmarshal(m.RawBody, &msgBody); err != nil {
+	if err := json.Unmarshal(m.RawBody, &m.MsgBody); err != nil {
 		return err
 	}
 
-	m.MsgBody.Type = msgBody.Type
-	m.MsgBody.ID = msgBody.ID
-	m.MsgBody.InReplyTo = msgBody.InReplyTo
-
 	return nil
+}
+
+func (m *Msg) MarshalBody(payload any) error {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	m.RawBody = raw
+	return nil
+}
+
+func (m Msg) IntoReply(id *int) *Msg {
+	msgID := *id
+	*id += 1
+
+	return &Msg{
+		Src: m.Dst,
+		Dst: m.Src,
+		MsgBody: MsgBody{
+			ID:        msgID,
+			InReplyTo: m.ID,
+			Type:      fmt.Sprintf("%s_ok", m.Type),
+		},
+	}
 }
 
 type MsgBody struct {
@@ -73,7 +87,6 @@ type MsgBody struct {
 }
 
 type InitBody struct {
-	MsgBody
 	NodeID  string   `json:"node_id"`
 	NodeIDs []string `json:"node_ids"`
 }
@@ -92,19 +105,6 @@ func (m *Msg) Send(encoder *json.Encoder) error {
 		return fmt.Errorf("could not encode echo replay: %v", err)
 	}
 	return nil
-}
-
-func ReplyTo(msg Msg, withPayload any) (*Msg, error) {
-	rawPayload, err := json.Marshal(withPayload)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Msg{
-		Src:     msg.Dst,
-		Dst:     msg.Src,
-		RawBody: rawPayload,
-	}, nil
 }
 
 func MainLoop(node Node) {
