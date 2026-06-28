@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -19,6 +20,9 @@ type result struct {
 }
 
 func main() {
+	workers := flag.Int("worker", 3, "number of workers")
+	flag.Parse()
+
 	fmt.Println("Build all executables ...")
 
 	cmd := exec.Command("go", "build", "./...")
@@ -38,9 +42,7 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	const workers = 3
-
-	for i := 0; i < workers; i++ {
+	for i := 0; i < *workers; i++ {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
