@@ -18,7 +18,7 @@ type UniqueIdNode struct {
 	id int
 }
 
-func (u UniqueIdNode) InitNode(_initBody node.InitBody, _events chan node.Event) node.Node {
+func (u UniqueIdNode) InitNode(node.InitBody, chan node.Event) node.Node {
 	// start from 1 because MainLoop write the first message (init)
 	u.id = 1
 	return u

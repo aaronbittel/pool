@@ -21,7 +21,7 @@ type EchoNode struct {
 	id int
 }
 
-func (e *EchoNode) InitNode(_initBody node.InitBody, _events chan node.Event) node.Node {
+func (e *EchoNode) InitNode(node.InitBody, chan node.Event) node.Node {
 	// start from 1 because MainLoop write the first message (init)
 	e.id = 1
 	return e
