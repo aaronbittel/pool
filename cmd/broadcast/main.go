@@ -35,7 +35,7 @@ type TopologyOkBody struct {
 	node.MsgBody
 }
 
-type set[T comparable] map[T]struct{}
+type set[T comparable] = map[T]struct{}
 
 type BroadcastNode struct {
 	name string
